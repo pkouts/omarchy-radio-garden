@@ -102,12 +102,14 @@ BarWidget {
             var md = loaded ? (panelLoader.item.mode || "") : ""
             var ch = loaded && panelLoader.item.channels ? panelLoader.item.channels.length : -1
             var fch = loaded && panelLoader.item.filteredChannels ? panelLoader.item.filteredChannels.length : -1
+            var pl = loaded && panelLoader.item.places ? panelLoader.item.places.length : -1
             return "{\"ok\":true,\"playing\":" + root.playing
                  + ",\"panelLoaded\":" + loaded
                  + ",\"panelOpen\":" + (loaded && panelLoader.item.opened === true)
                  + ",\"mode\":" + JSON.stringify(md)
                  + ",\"channels\":" + ch
-                 + ",\"matched\":" + fch + "}"
+                 + ",\"matched\":" + fch
+                 + ",\"places\":" + pl + "}"
         }
     }
 

@@ -18,7 +18,7 @@ Panel {
     property var hostWidget: null
 
     readonly property string home: Quickshell.env("HOME") || ""
-    readonly property string modulesPath: home + "/.config/omarchy/plugins/io.github.radio-garden/modules.json"
+    readonly property string modulesPath: home + "/.config/omarchy/plugins/" + root.moduleName + "/modules.json"
     readonly property string userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 
     // state
