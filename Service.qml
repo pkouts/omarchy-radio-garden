@@ -38,6 +38,14 @@ Item {
 
     property string currentUrl: ""
     property string currentTitle: ""
+
+    // ---- ducking: mute ourselves while something else plays audio ----
+    property bool duckEnabled: false
+    property bool otherAudio: false
+    property real mpvVolume: 100
+    property real fadeTarget: 100
+    readonly property string mpvSocket: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/radio-garden-mpv.sock"
+    readonly property string duckStatePath: home + "/.local/state/omarchy-radio-garden-duck"
     readonly property bool hasStation: currentUrl !== ""
 
     property string pendingUrl: ""
@@ -137,7 +145,14 @@ Item {
     function startPending() {
         if (pendingUrl === "") return
         lastError = ""
+        // Start at 0 when something else is already playing, so the first
+        // moment of the stream never talks over it.
+        var startVol = (duckEnabled && otherAudio) ? 0 : 100
+        mpvVolume = startVol
+        fadeTarget = startVol
         proc.command = ["mpv", "--no-video", "--really-quiet",
+                        "--input-ipc-server=" + mpvSocket,
+                        "--volume=" + startVol,
                         "--user-agent=" + userAgent, pendingUrl]
         proc.running = true
         currentUrl = pendingUrl
@@ -179,11 +194,97 @@ Item {
     }
 
     function clearState() {
+        fadeTimer.stop()
+        mpvVolume = 100
+        fadeTarget = 100
         playing = false
         paused = false
         nowPlaying = ""
         currentUrl = ""
         currentTitle = ""
+    }
+
+    // ---------- ducking ----------
+
+    function toggleDuck() { setDuck(!duckEnabled) }
+
+    function setDuck(on) {
+        duckEnabled = on === true
+        saveDuckState()
+        if (!duckEnabled) {
+            fadeTo(100)
+            return
+        }
+        audioScan.running = true
+        if (playing) fadeTo(otherAudio ? 0 : 100)
+    }
+
+    // Ramp the stream volume by 5 every 50 ms: 100 -> 0 in exactly one second.
+    function fadeTo(target) {
+        fadeTarget = Math.max(0, Math.min(100, target))
+        if (!proc.running) { mpvVolume = fadeTarget; return }
+        if (!fadeTimer.running) fadeTimer.start()
+    }
+
+    function fadeTick() {
+        if (!proc.running) { fadeTimer.stop(); return }
+        var d = fadeTarget - mpvVolume
+        if (Math.abs(d) < 5) { sendVolume(fadeTarget); fadeTimer.stop(); return }
+        sendVolume(mpvVolume + (d > 0 ? 5 : -5))
+    }
+
+    function sendVolume(v) {
+        mpvVolume = Math.round(v)
+        if (!proc.running || volumeProc.running) return
+        volumeProc.command = ["sh", "-c",
+            "printf '%s' '{\"command\":[\"set_property\",\"volume\"," + mpvVolume +
+            "]}' | socat -t 1 - UNIX-CONNECT:" + mpvSocket]
+        volumeProc.running = true
+    }
+
+    // "Other audio" = any running PipeWire output stream that is not our mpv.
+    // pw-dump is the only source that reports live node state on PipeWire;
+    // pactl's sink-input listing no longer includes it, so fall back to that
+    // for plain PulseAudio setups.
+    function scanAudio(text) {
+        var t = String(text || "")
+        var other = false
+        if (t.charAt(0) === "[") {
+            try {
+                var nodes = JSON.parse(t)
+                for (var i = 0; i < nodes.length; i++) {
+                    var info = nodes[i].info || {}
+                    if (info.state !== "running") continue
+                    var props = info.props || {}
+                    if (props["media.class"] !== "Stream/Output/Audio") continue
+                    var bin = String(props["application.process.binary"] || "")
+                    var name = String(props["application.name"] || "")
+                    if (bin === "mpv" || name === "mpv") continue
+                    other = true
+                    break
+                }
+            } catch (e) {}
+        } else {
+            var blocks = t.split(/\n\s*\n/)
+            for (var j = 0; j < blocks.length; j++) {
+                var b = blocks[j]
+                if (b.indexOf("State: RUNNING") === -1) continue
+                if (/Corked:\s*yes/.test(b)) continue
+                if (/application\.process\.binary = "mpv"/.test(b)) continue
+                other = true
+                break
+            }
+        }
+        if (other !== otherAudio) {
+            otherAudio = other
+            if (duckEnabled && playing) fadeTo(other ? 0 : 100)
+        }
+    }
+
+    function saveDuckState() {
+        stateWrite.command = ["sh", "-c",
+            "printf '%s' '" + (duckEnabled ? "1" : "0") + "' > '" + duckStatePath + "'"]
+        stateWrite.running = true
     }
 
     // ---------- data ----------
@@ -283,5 +384,45 @@ Item {
         }
     }
 
-    Component.onCompleted: loadPlaces()
+    Timer {
+        id: fadeTimer
+        interval: 50
+        repeat: true
+        onTriggered: root.fadeTick()
+    }
+
+    Timer {
+        id: duckPoll
+        interval: 700
+        repeat: true
+        running: root.duckEnabled
+        onTriggered: if (!audioScan.running) audioScan.running = true
+    }
+
+    Process {
+        id: audioScan
+        command: ["sh", "-c", "pw-dump Node 2>/dev/null || pactl list sink-inputs 2>/dev/null"]
+        stdout: StdioCollector {
+            onStreamFinished: root.scanAudio(String(this.text || ""))
+        }
+    }
+
+    Process { id: volumeProc }
+
+    Process { id: stateWrite }
+
+    Process {
+        id: stateRead
+        command: ["cat", root.duckStatePath]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                if (String(this.text || "").trim() === "1") root.duckEnabled = true
+            }
+        }
+    }
+
+    Component.onCompleted: {
+        loadPlaces()
+        stateRead.running = true
+    }
 }

@@ -37,6 +37,9 @@ Panel {
     readonly property string nowPlaying: service ? (service.nowPlaying || "") : ""
     readonly property bool hasStation: service ? service.hasStation === true : false
 
+    readonly property bool duckEnabled: service ? service.duckEnabled === true : false
+    readonly property bool otherAudio: service ? service.otherAudio === true : false
+
     function setQuery(value) { if (service) service.setQuery(value) }
     function setChanQuery(value) { if (service) service.setChanQuery(value) }
     function selectPlace(id, title) { if (service) service.selectPlace(id, title) }
@@ -44,6 +47,7 @@ Panel {
     function playChannel(id, title) { if (service) service.playStation(id, title) }
     function stopPlayback() { if (service) service.stop() }
     function togglePlay() { if (service) service.togglePlay() }
+    function toggleDuck() { if (service) service.toggleDuck() }
 
     // --- popup ---
 
@@ -232,6 +236,59 @@ Panel {
                         cursorShape: Qt.PointingHandCursor
                         onClicked: root.playChannel(modelData.id, modelData.title)
                     }
+                }
+            }
+
+            // Ducking: silence the radio while any other stream is playing.
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Style.space(10)
+
+                Rectangle {
+                    implicitWidth: Style.space(30)
+                    implicitHeight: Style.space(16)
+                    Layout.preferredWidth: implicitWidth
+                    Layout.preferredHeight: implicitHeight
+                    radius: height / 2
+                    color: root.duckEnabled ? "#3b82f6" : "#3a3d45"
+                    Behavior on color { ColorAnimation { duration: 120 } }
+
+                    Rectangle {
+                        width: Style.space(12); height: Style.space(12)
+                        radius: width / 2
+                        color: "#ffffff"
+                        y: Style.space(2)
+                        x: root.duckEnabled ? parent.width - width - Style.space(2) : Style.space(2)
+                        Behavior on x { NumberAnimation { duration: 120 } }
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.toggleDuck()
+                    }
+                }
+
+                Text {
+                    text: qsTr("Mute while other audio plays")
+                    color: root.duckEnabled ? root.barForeground : "#9aa0a6"
+                    font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                    font.pixelSize: Style.font.bodySmall
+                    Layout.fillWidth: true
+                    elide: Text.ElideRight
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.toggleDuck()
+                    }
+                }
+
+                Text {
+                    visible: root.duckEnabled && root.otherAudio
+                    text: qsTr("muted")
+                    color: "#5aa9ff"
+                    font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                    font.pixelSize: Style.font.bodySmall
                 }
             }
 

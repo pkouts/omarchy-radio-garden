@@ -26,8 +26,21 @@ omarchy bar move pkouts.radio-garden --section centerEnd
 ## Requirements
 
 - **`mpv`** — audio playback. Install it from the Arch repositories (package `mpv`).
+- **`socat`** — used to change the player volume live for the mute feature.
 - **`curl`** — fetches the station list for a city (already present on Arch).
+- **PipeWire** (`pw-dump`) — detects when other applications are playing audio.
 - **Network access** to `radio.garden` when opening a city.
+
+### Mute while other audio plays
+
+At the bottom of the panel there is a toggle: **Mute while other audio plays**.
+When it is on, the radio fades out over one second as soon as another
+application starts playing audio, and fades back in over one second when that
+audio stops. The setting is remembered across restarts.
+
+The toggle only affects this plugin — it never changes the volume of anything
+else. Detection uses PipeWire's live node states, and the fade is applied to the
+player's own volume, so the stream keeps playing while muted.
 
 The full list of 12,000+ cities ships with the plugin (`modules.json`), so
 browsing cities works offline; only loading a city's stations needs the network.

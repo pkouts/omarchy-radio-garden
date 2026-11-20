@@ -91,6 +91,7 @@ BarWidget {
         }
         function pause(): void { if (root.service) root.service.pause() }
         function resume(): void { if (root.service) root.service.resume() }
+        function duck(enabled: bool): void { if (root.service) root.service.setDuck(enabled) }
         function stop(): void { if (root.service) root.service.stop() }
         function back(): void { if (root.service) root.service.backToPlaces() }
         function search(text: string): void { if (root.service) root.service.setQuery(text) }
@@ -123,7 +124,10 @@ BarWidget {
                  + ",\"matchedPlaces\":" + fpl
                  + ",\"panelMode\":" + JSON.stringify(loaded ? (panelLoader.item.mode || "") : "")
                  + ",\"panelCity\":" + JSON.stringify(loaded ? (panelLoader.item.selectedTitle || "") : "")
-                 + ",\"panelQuery\":" + JSON.stringify(loaded ? (panelLoader.item.query || "") : "") + "}"
+                 + ",\"panelQuery\":" + JSON.stringify(loaded ? (panelLoader.item.query || "") : "")
+                 + ",\"duckEnabled\":" + (s ? s.duckEnabled === true : false)
+                 + ",\"otherAudio\":" + (s ? s.otherAudio === true : false)
+                 + ",\"mpvVolume\":" + (s ? Math.round(s.mpvVolume) : -1) + "}"
         }
     }
 
