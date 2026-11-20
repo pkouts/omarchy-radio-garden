@@ -2,21 +2,26 @@
   "schemaVersion": 1,
   "id": "pkouts.radio-garden",
   "name": "Radio Garden",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "author": "pkout",
   "license": "MIT",
   "description": "Browse live radio stations by city from Radio Garden and play them from the Omarchy bar.",
-  "kinds": [
-    "bar-widget"
-  ],
+  "kinds": ["bar-widget", "service"],
   "entryPoints": {
-    "barWidget": "BarWidget.qml"
+    "barWidget": "BarWidget.qml",
+    "service": "Service.qml"
   },
   "barWidget": {
     "displayName": "Radio Garden",
-    "description": "Pick a city, search its stations, and listen \u2014 right from the bar.",
+    "description": "Pick a city, search its stations, and listen — right from the bar.",
     "category": "Media",
     "allowMultiple": false,
     "defaultSection": "right"
+  },
+  "service": {
+    "displayName": "Radio Garden Player",
+    "description": "Single shared player so every bar instance stays in sync.",
+    "category": "Media",
+    "syncIntervalMinutes": 0
   }
 }

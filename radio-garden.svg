@@ -1,9 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <rect width="64" height="64" rx="14" fill="#FFD60A"/>
-  <circle cx="32" cy="26" r="3" fill="#FFD60A"/>
-  <circle cx="25" cy="32" r="2" fill="#FFD60A"/>
-  <circle cx="32" cy="38" r="2" fill="#FFD60A"/>
-  <circle cx="39" cy="32" r="2" fill="#FFD60A"/>
-  <circle cx="28" cy="38" r="1.5" fill="#FFD60A"/>
-  <circle cx="36" cy="38" r="1.5" fill="#FFD60A"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+  <!-- Retro radio: body with speaker slots and a dial, plus an antenna. -->
+  <path fill="currentColor" fill-rule="evenodd" d="M5 9h14a2.6 2.6 0 0 1 2.6 2.6v6.2A2.6 2.6 0 0 1 19 20.4H5a2.6 2.6 0 0 1-2.6-2.6v-6.2A2.6 2.6 0 0 1 5 9Zm1.6 3.2a1.1 1.1 0 0 0 0 2.2h5.2a1.1 1.1 0 0 0 0-2.2H6.6Zm0 3.4a1.1 1.1 0 0 0 0 2.2h5.2a1.1 1.1 0 0 0 0-2.2H6.6ZM17 12.2a2.4 2.4 0 1 0 0 4.8 2.4 2.4 0 0 0 0-4.8Z"/>
+  <path stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M15.4 9 18.6 5"/>
+  <circle cx="19.2" cy="4.3" r="1.4" fill="currentColor"/>
 </svg>

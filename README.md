@@ -33,8 +33,12 @@ browsing cities works offline; only loading a city's stations needs the network.
 - **Left / right click** the bar icon: open or close the panel.
 - **Middle click**: stop playback.
 - In the panel: type to filter cities → click a city → type to filter that
-  city's stations → click a station to play. The footer has a **Stop** button.
+  city's stations → click a station to play. The footer shows the current
+  station with **play/pause** and **Stop** controls.
 - While playing, the bar icon is highlighted and its tooltip shows the station.
+- State is shared: with the bar on several monitors, every instance shows the
+  same city, station list, search text and playback state, and only one player
+  runs. Pausing keeps the station ready to resume.
 
 ## Configure
 

@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Shapes
 import Quickshell
 import Quickshell.Io
 import qs.Commons
@@ -17,221 +18,35 @@ Panel {
     property var anchorItem: null
     property var hostWidget: null
 
-    readonly property string home: Quickshell.env("HOME") || ""
-    readonly property string modulesPath: home + "/.config/omarchy/plugins/" + root.moduleName + "/modules.json"
-    readonly property string userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+    // All browsing and playback state lives in the shared Service, so every
+    // panel on every monitor shows the same city, station list and search text.
+    property var service: null
 
-    // state
-    property var places: []
-    property var filtered: []
-    property var channels: []
-    property var filteredChannels: []
-    property string mode: "places"          // "places" | "channels"
-    property string query: ""
-    property string chanQuery: ""
-    property string selectedId: ""
-    property string selectedTitle: ""
-    property string nowPlaying: ""
-    property bool playing: false
-    property string statusText: ""
-    property string lastError: ""
-    property string pendingUrl: ""
-    property string pendingTitle: ""
-    property bool restarting: false
-    property bool stopping: false
+    readonly property var places: service ? service.places : []
+    readonly property var filtered: service ? service.filtered : []
+    readonly property var channels: service ? service.channels : []
+    readonly property var filteredChannels: service ? service.filteredChannels : []
+    readonly property string mode: service ? (service.mode || "places") : "places"
+    readonly property string query: service ? (service.query || "") : ""
+    readonly property string chanQuery: service ? (service.chanQuery || "") : ""
+    readonly property string selectedTitle: service ? (service.selectedTitle || "") : ""
+    readonly property string statusText: service ? (service.statusText || "") : ""
 
-    // External station/city names are untrusted: strip control characters and
-    // any markup-ish punctuation before they reach a tooltip or a status line.
-    function cleanText(value) {
-        return String(value === undefined || value === null ? "" : value)
-            .replace(/[\u0000-\u001f\u007f-\u009f]/g, "")
-            .replace(/[<>&"']/g, "")
-            .slice(0, 120)
-    }
+    readonly property bool playing: service ? service.playing === true : false
+    readonly property bool paused: service ? service.paused === true : false
+    readonly property string nowPlaying: service ? (service.nowPlaying || "") : ""
+    readonly property bool hasStation: service ? service.hasStation === true : false
 
-    function applyFilter() {
-        var q = (query || "").toLowerCase()
-        var src = places || []
-        var out = []
-        for (var i = 0; i < src.length && out.length < 300; i++) {
-            var p = src[i]
-            if (!p) continue
-            if (q === "" || (p.title || "").toLowerCase().indexOf(q) >= 0
-                          || (p.country || "").toLowerCase().indexOf(q) >= 0) {
-                out.push(p)
-            }
-        }
-        filtered = out
-    }
-
-    function applyChannelFilter() {
-        var q = (chanQuery || "").toLowerCase()
-        var src = channels || []
-        if (q === "") { filteredChannels = src; return }
-        var out = []
-        for (var i = 0; i < src.length; i++) {
-            var c = src[i]
-            if (c && (c.title || "").toLowerCase().indexOf(q) >= 0) out.push(c)
-        }
-        filteredChannels = out
-    }
-
-    function selectPlace(id, title) {
-        if (!/^[A-Za-z0-9_-]{1,32}$/.test(String(id || ""))) return
-        selectedId = id
-        selectedTitle = cleanText(title)
-        channels = []
-        filteredChannels = []
-        chanQuery = ""
-        mode = "channels"
-        statusText = qsTr("Loading stations…")
-        channelsProc.running = true
-    }
-
-    function backToPlaces() {
-        mode = "places"
-        channels = []
-        statusText = ""
-    }
-
-    function playChannel(id, title) {
-        if (!/^[A-Za-z0-9_-]{1,32}$/.test(String(id || ""))) return
-        pendingUrl = "https://radio.garden/api/ara/content/listen/" + id + "/channel.mp3"
-        pendingTitle = cleanText(title)
-        if (playProc.running) {
-            // Serialize: stop the current stream, then start the new one from
-            // its onExited. Avoids pkill racing (and killing) the new stream.
-            restarting = true
-            playProc.running = false
-        } else {
-            startPending()
-        }
-    }
-
-    function startPending() {
-        if (pendingUrl === "") return
-        root.lastError = ""
-        playProc.command = ["mpv", "--no-video", "--really-quiet",
-                            "--user-agent=" + userAgent, pendingUrl]
-        playProc.running = true
-        root.nowPlaying = pendingTitle
-        root.playing = true
-        root.statusText = qsTr("Playing: %1").arg(pendingTitle)
-        pendingUrl = ""
-    }
-
-    function stopPlayback() {
-        pendingUrl = ""
-        if (playProc.running) {
-            stopping = true
-            playProc.running = false
-        } else {
-            playing = false
-            nowPlaying = ""
-            statusText = qsTr("Stopped")
-        }
-    }
-
-    // --- load the bundled city list once ---
-    Process {
-        id: catProc
-        command: ["cat", root.modulesPath]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                try {
-                    var arr = JSON.parse(String(text || "[]"))
-                    root.places = arr
-                    root.applyFilter()
-                    root.statusText = qsTr("%1 cities").arg(arr.length)
-                } catch (e) {
-                    root.statusText = qsTr("Could not read station list")
-                }
-            }
-        }
-        onExited: function(exitCode) { if (exitCode !== 0) root.statusText = qsTr("Could not read station list") }
-    }
-
-    // --- fetch stations for the selected city ---
-    Process {
-        id: channelsProc
-        // -f fails on HTTP errors; --max-filesize aborts oversized bodies
-        // mid-transfer so the collector can never buffer an unbounded response.
-        command: ["curl", "-sS", "-f", "--max-time", "25", "--max-filesize", "4000000",
-                  "-A", root.userAgent,
-                  "https://radio.garden/api/ara/content/page/" + root.selectedId + "/channels?s=1&hls=1&hl=en"]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                var text = String(this.text || "")
-                if (text.length > 4000000) {
-                    root.channels = []
-                    root.filteredChannels = []
-                    root.statusText = qsTr("Station list too large")
-                    return
-                }
-                var out = []
-                try {
-                    var doc = JSON.parse(text)
-                    var content = (doc.data && doc.data.content) || []
-                    for (var i = 0; i < content.length && out.length < 1000; i++) {
-                        var block = content[i]
-                        if (block.itemsType !== "channel") continue
-                        var items = block.items || []
-                        for (var j = 0; j < items.length && out.length < 1000; j++) {
-                            var pg = items[j].page
-                            if (!pg || typeof pg.url !== "string") continue
-                            var cid = (pg.url.split("/").pop()) || ""
-                            if (!/^[A-Za-z0-9_-]{1,32}$/.test(cid)) continue
-                            out.push({ title: String(pg.title || "").slice(0, 200), id: cid })
-                        }
-                    }
-                } catch (e) {}
-                root.channels = out
-                root.applyChannelFilter()
-                root.statusText = out.length > 0
-                    ? qsTr("%1 stations in %2").arg(out.length).arg(root.selectedTitle)
-                    : qsTr("No stations found")
-            }
-        }
-        onExited: function(exitCode) {
-            if (exitCode !== 0 && root.channels.length === 0)
-                root.statusText = qsTr("Could not load stations")
-        }
-    }
-
-    Process {
-        id: playProc
-        stderr: StdioCollector {
-            onStreamFinished: root.lastError = String(this.text || "").trim()
-        }
-        onExited: function(exitCode) {
-            if (root.restarting) {
-                root.restarting = false
-                root.startPending()
-                return
-            }
-            if (root.stopping) {
-                root.stopping = false
-                root.playing = false
-                root.nowPlaying = ""
-                root.statusText = qsTr("Stopped")
-                return
-            }
-            root.playing = false
-            if (exitCode !== 0) {
-                var first = (root.lastError || "").split("\n")[0]
-                root.statusText = first !== ""
-                    ? qsTr("Stream failed: ") + first
-                    : qsTr("Stream ended or failed")
-                console.warn("radio-garden: mpv exit " + exitCode + " :: " + root.lastError)
-            } else {
-                root.statusText = qsTr("Stream ended")
-            }
-        }
-    }
-
-    Component.onCompleted: catProc.running = true
+    function setQuery(value) { if (service) service.setQuery(value) }
+    function setChanQuery(value) { if (service) service.setChanQuery(value) }
+    function selectPlace(id, title) { if (service) service.selectPlace(id, title) }
+    function backToPlaces() { if (service) service.backToPlaces() }
+    function playChannel(id, title) { if (service) service.playStation(id, title) }
+    function stopPlayback() { if (service) service.stop() }
+    function togglePlay() { if (service) service.togglePlay() }
 
     // --- popup ---
+
     KeyboardPanel {
         id: panel
 
@@ -253,6 +68,7 @@ Panel {
                 Text {
                     text: qsTr("Radio Garden")
                     color: root.barForeground
+                    font.family: root.bar ? root.bar.fontFamily : Style.font.family
                     font.pixelSize: Style.font.title
                     font.bold: true
                 }
@@ -261,6 +77,7 @@ Panel {
                     text: root.statusText
                     textFormat: Text.PlainText
                     color: "#9aa0a6"
+                    font.family: root.bar ? root.bar.fontFamily : Style.font.family
                     font.pixelSize: Style.font.bodySmall
                     elide: Text.ElideRight
                     Layout.maximumWidth: Style.space(220)
@@ -273,8 +90,9 @@ Panel {
                 Layout.fillWidth: true
                 visible: root.mode === "places"
                 placeholderText: qsTr("Search a city…")
+                font.family: root.bar ? root.bar.fontFamily : Style.font.family
                 text: root.query
-                onTextEdited: { root.query = text; root.applyFilter() }
+                onTextEdited: root.setQuery(text)
             }
 
             // back row (channels mode)
@@ -284,6 +102,7 @@ Panel {
                 Text {
                     text: "‹ " + qsTr("Back")
                     color: "#5aa9ff"
+                    font.family: root.bar ? root.bar.fontFamily : Style.font.family
                     font.pixelSize: Style.font.bodySmall
                     MouseArea {
                         anchors.fill: parent
@@ -296,6 +115,7 @@ Panel {
                     text: root.selectedTitle
                     textFormat: Text.PlainText
                     color: "#9aa0a6"
+                    font.family: root.bar ? root.bar.fontFamily : Style.font.family
                     font.pixelSize: Style.font.bodySmall
                 }
             }
@@ -306,8 +126,9 @@ Panel {
                 Layout.fillWidth: true
                 visible: root.mode === "channels"
                 placeholderText: qsTr("Search stations…")
+                font.family: root.bar ? root.bar.fontFamily : Style.font.family
                 text: root.chanQuery
-                onTextEdited: { root.chanQuery = text; root.applyChannelFilter() }
+                onTextEdited: root.setChanQuery(text)
             }
 
             Text {
@@ -317,6 +138,7 @@ Panel {
                 text: qsTr("No stations match \"%1\"").arg(root.chanQuery)
                 textFormat: Text.PlainText
                 color: "#9aa0a6"
+                font.family: root.bar ? root.bar.fontFamily : Style.font.family
                 font.pixelSize: Style.font.bodySmall
             }
 
@@ -348,6 +170,7 @@ Panel {
                             text: modelData.title || ""
                             textFormat: Text.PlainText
                             color: root.barForeground
+                            font.family: root.bar ? root.bar.fontFamily : Style.font.family
                             font.pixelSize: Style.font.body
                             elide: Text.ElideRight
                         }
@@ -356,6 +179,7 @@ Panel {
                             text: modelData.country || ""
                             textFormat: Text.PlainText
                             color: "#9aa0a6"
+                            font.family: root.bar ? root.bar.fontFamily : Style.font.family
                             font.pixelSize: Style.font.bodySmall
                             elide: Text.ElideRight
                         }
@@ -396,6 +220,7 @@ Panel {
                         text: modelData.title || ""
                         textFormat: Text.PlainText
                         color: root.barForeground
+                        font.family: root.bar ? root.bar.fontFamily : Style.font.family
                         font.pixelSize: Style.font.body
                         elide: Text.ElideRight
                     }
@@ -410,27 +235,80 @@ Panel {
                 }
             }
 
-            // footer
+            // footer: now-playing text + transport controls
             RowLayout {
                 Layout.fillWidth: true
+                spacing: Style.space(12)
+
                 Text {
-                    text: root.playing
                     textFormat: Text.PlainText
-                        ? qsTr("▶ %1").arg(root.nowPlaying)
-                        : qsTr("Idle")
+                    text: root.playing
+                        ? qsTr("Playing: %1").arg(root.nowPlaying)
+                        : (root.hasStation
+                            ? qsTr("Paused: %1").arg(root.nowPlaying)
+                            : qsTr("Nothing playing"))
                     color: root.playing ? "#5aa9ff" : "#9aa0a6"
+                    font.family: root.bar ? root.bar.fontFamily : Style.font.family
                     font.pixelSize: Style.font.bodySmall
                     elide: Text.ElideRight
                     Layout.fillWidth: true
                 }
+
+                // Play / pause is drawn as vector shapes, not a font glyph:
+                // private-use icon codepoints fall back to unrelated symbols
+                // when the resolved font differs, which made the button wrong.
+                Item {
+                    id: transport
+                    visible: root.hasStation
+                    implicitWidth: Style.space(18)
+                    implicitHeight: Style.space(16)
+                    Layout.preferredWidth: implicitWidth
+                    Layout.preferredHeight: implicitHeight
+
+                    // Play triangle (shown while paused).
+                    Shape {
+                        anchors.fill: parent
+                        visible: !root.playing
+                        ShapePath {
+                            strokeWidth: 0
+                            strokeColor: "transparent"
+                            fillColor: root.barForeground
+                            startX: Style.space(5)
+                            startY: Style.space(3)
+                            PathLine { x: Style.space(13); y: Style.space(8) }
+                            PathLine { x: Style.space(5); y: Style.space(13) }
+                            PathLine { x: Style.space(5); y: Style.space(3) }
+                        }
+                    }
+
+                    // Pause bars (shown while playing).
+                    Row {
+                        anchors.centerIn: parent
+                        spacing: Style.space(4)
+                        visible: root.playing
+                        Rectangle { width: Style.space(4); height: Style.space(10); radius: Style.space(1); color: root.barForeground }
+                        Rectangle { width: Style.space(4); height: Style.space(10); radius: Style.space(1); color: root.barForeground }
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        anchors.margins: -Style.space(6)
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.togglePlay()
+                    }
+                }
+
                 Text {
                     text: qsTr("Stop")
-                    color: root.playing ? "#ff6b6b" : "#555b60"
+                    visible: root.hasStation
+                    color: "#ff6b6b"
+                    font.family: root.bar ? root.bar.fontFamily : Style.font.family
                     font.pixelSize: Style.font.bodySmall
                     MouseArea {
                         anchors.fill: parent
+                        anchors.margins: -Style.space(4)
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: if (root.playing) root.stopPlayback()
+                        onClicked: root.stopPlayback()
                     }
                 }
             }
