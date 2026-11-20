@@ -40,6 +40,15 @@ Panel {
     property bool restarting: false
     property bool stopping: false
 
+    // External station/city names are untrusted: strip control characters and
+    // any markup-ish punctuation before they reach a tooltip or a status line.
+    function cleanText(value) {
+        return String(value === undefined || value === null ? "" : value)
+            .replace(/[\u0000-\u001f\u007f-\u009f]/g, "")
+            .replace(/[<>&"']/g, "")
+            .slice(0, 120)
+    }
+
     function applyFilter() {
         var q = (query || "").toLowerCase()
         var src = places || []
@@ -68,8 +77,9 @@ Panel {
     }
 
     function selectPlace(id, title) {
+        if (!/^[A-Za-z0-9_-]{1,32}$/.test(String(id || ""))) return
         selectedId = id
-        selectedTitle = title
+        selectedTitle = cleanText(title)
         channels = []
         filteredChannels = []
         chanQuery = ""
@@ -85,9 +95,9 @@ Panel {
     }
 
     function playChannel(id, title) {
-        if (!id) return
+        if (!/^[A-Za-z0-9_-]{1,32}$/.test(String(id || ""))) return
         pendingUrl = "https://radio.garden/api/ara/content/listen/" + id + "/channel.mp3"
-        pendingTitle = title
+        pendingTitle = cleanText(title)
         if (playProc.running) {
             // Serialize: stop the current stream, then start the new one from
             // its onExited. Avoids pkill racing (and killing) the new stream.
@@ -144,24 +154,34 @@ Panel {
     // --- fetch stations for the selected city ---
     Process {
         id: channelsProc
-        command: ["curl", "-s", "--max-time", "25", "-A", root.userAgent,
+        // -f fails on HTTP errors; --max-filesize aborts oversized bodies
+        // mid-transfer so the collector can never buffer an unbounded response.
+        command: ["curl", "-sS", "-f", "--max-time", "25", "--max-filesize", "4000000",
+                  "-A", root.userAgent,
                   "https://radio.garden/api/ara/content/page/" + root.selectedId + "/channels?s=1&hls=1&hl=en"]
         stdout: StdioCollector {
             onStreamFinished: {
                 var text = String(this.text || "")
+                if (text.length > 4000000) {
+                    root.channels = []
+                    root.filteredChannels = []
+                    root.statusText = qsTr("Station list too large")
+                    return
+                }
                 var out = []
                 try {
                     var doc = JSON.parse(text)
                     var content = (doc.data && doc.data.content) || []
-                    for (var i = 0; i < content.length; i++) {
+                    for (var i = 0; i < content.length && out.length < 1000; i++) {
                         var block = content[i]
                         if (block.itemsType !== "channel") continue
                         var items = block.items || []
-                        for (var j = 0; j < items.length; j++) {
+                        for (var j = 0; j < items.length && out.length < 1000; j++) {
                             var pg = items[j].page
-                            if (!pg || !pg.url) continue
+                            if (!pg || typeof pg.url !== "string") continue
                             var cid = (pg.url.split("/").pop()) || ""
-                            out.push({ title: pg.title || "", id: cid })
+                            if (!/^[A-Za-z0-9_-]{1,32}$/.test(cid)) continue
+                            out.push({ title: String(pg.title || "").slice(0, 200), id: cid })
                         }
                     }
                 } catch (e) {}
@@ -174,7 +194,7 @@ Panel {
         }
         onExited: function(exitCode) {
             if (exitCode !== 0 && root.channels.length === 0)
-                root.statusText = qsTr("Network error")
+                root.statusText = qsTr("Could not load stations")
         }
     }
 
@@ -239,6 +259,7 @@ Panel {
                 Item { Layout.fillWidth: true }
                 Text {
                     text: root.statusText
+                    textFormat: Text.PlainText
                     color: "#9aa0a6"
                     font.pixelSize: Style.font.bodySmall
                     elide: Text.ElideRight
@@ -273,6 +294,7 @@ Panel {
                 Item { Layout.fillWidth: true }
                 Text {
                     text: root.selectedTitle
+                    textFormat: Text.PlainText
                     color: "#9aa0a6"
                     font.pixelSize: Style.font.bodySmall
                 }
@@ -293,6 +315,7 @@ Panel {
                          && root.filteredChannels.length === 0
                 Layout.fillWidth: true
                 text: qsTr("No stations match \"%1\"").arg(root.chanQuery)
+                textFormat: Text.PlainText
                 color: "#9aa0a6"
                 font.pixelSize: Style.font.bodySmall
             }
@@ -323,6 +346,7 @@ Panel {
                         Text {
                             width: parent.width
                             text: modelData.title || ""
+                            textFormat: Text.PlainText
                             color: root.barForeground
                             font.pixelSize: Style.font.body
                             elide: Text.ElideRight
@@ -330,6 +354,7 @@ Panel {
                         Text {
                             width: parent.width
                             text: modelData.country || ""
+                            textFormat: Text.PlainText
                             color: "#9aa0a6"
                             font.pixelSize: Style.font.bodySmall
                             elide: Text.ElideRight
@@ -369,6 +394,7 @@ Panel {
                         anchors.right: parent.right
                         anchors.rightMargin: Style.space(10)
                         text: modelData.title || ""
+                        textFormat: Text.PlainText
                         color: root.barForeground
                         font.pixelSize: Style.font.body
                         elide: Text.ElideRight
@@ -389,6 +415,7 @@ Panel {
                 Layout.fillWidth: true
                 Text {
                     text: root.playing
+                    textFormat: Text.PlainText
                         ? qsTr("▶ %1").arg(root.nowPlaying)
                         : qsTr("Idle")
                     color: root.playing ? "#5aa9ff" : "#9aa0a6"

@@ -17,6 +17,15 @@ BarWidget {
     readonly property string stationLabel: (panelLoader.item && panelLoader.item.nowPlaying)
         ? panelLoader.item.nowPlaying : qsTr("Radio Garden")
 
+    // Tooltips are rendered by Omarchy's own widget, so external station names
+    // are stripped of control characters and markup before they get there.
+    function cleanForTooltip(value) {
+        return String(value === undefined || value === null ? "" : value)
+            .replace(/[\u0000-\u001f\u007f-\u009f]/g, "")
+            .replace(/[<>&"']/g, "")
+            .slice(0, 120)
+    }
+
     function injectPanel() {
         if (!panelLoader.item) return
         if ("bar" in panelLoader.item) panelLoader.item.bar = root.bar
@@ -119,7 +128,7 @@ BarWidget {
         bar: root.bar
         // nf-md-radio_tower (U+F0433) — present in the Omarchy Nerd Font.
         text: "\uF0433"
-        tooltipText: root.stationLabel
+        tooltipText: root.cleanForTooltip(root.stationLabel)
         active: root.playing
 
         onPressed: function(buttonCode) {
