@@ -39,6 +39,7 @@ Panel {
 
     readonly property bool duckEnabled: service ? service.duckEnabled === true : false
     readonly property bool otherAudio: service ? service.otherAudio === true : false
+    readonly property bool ducked: service ? service.ducked === true : false
 
     function setQuery(value) { if (service) service.setQuery(value) }
     function setChanQuery(value) { if (service) service.setChanQuery(value) }
@@ -284,7 +285,7 @@ Panel {
                 }
 
                 Text {
-                    visible: root.duckEnabled && root.otherAudio
+                    visible: root.ducked
                     text: qsTr("muted")
                     color: "#5aa9ff"
                     font.family: root.bar ? root.bar.fontFamily : Style.font.family

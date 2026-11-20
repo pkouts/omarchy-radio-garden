@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "pkouts.radio-garden",
   "name": "Radio Garden",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "author": "pkout",
   "license": "MIT",
   "description": "Browse live radio stations by city from Radio Garden and play them from the Omarchy bar.",

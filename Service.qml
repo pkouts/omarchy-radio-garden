@@ -44,6 +44,7 @@ Item {
     property bool otherAudio: false
     property real mpvVolume: 100
     property real fadeTarget: 100
+    readonly property bool ducked: duckEnabled && otherAudio && mpvVolume < 1
     readonly property string mpvSocket: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/radio-garden-mpv.sock"
     readonly property string duckStatePath: home + "/.local/state/omarchy-radio-garden-duck"
     readonly property bool hasStation: currentUrl !== ""
@@ -155,6 +156,8 @@ Item {
                         "--volume=" + startVol,
                         "--user-agent=" + userAgent, pendingUrl]
         proc.running = true
+        mpvIpc.connected = false
+        connectIpc()
         currentUrl = pendingUrl
         currentTitle = pendingTitle
         nowPlaying = pendingTitle
@@ -165,6 +168,7 @@ Item {
 
     function pause() {
         if (!playing) return
+        mpvIpc.connected = false
         paused = true
         playing = false
         if (proc.running) {
@@ -184,6 +188,7 @@ Item {
     }
 
     function stop() {
+        mpvIpc.connected = false
         pendingUrl = ""
         if (proc.running) {
             intent = "stop"
@@ -216,7 +221,11 @@ Item {
             return
         }
         audioScan.running = true
-        if (playing) fadeTo(otherAudio ? 0 : 100)
+        if (playing) {
+            connectIpc()
+            ipcHeal.restart()
+            fadeTo(otherAudio ? 0 : 100)
+        }
     }
 
     // Ramp the stream volume by 5 every 50 ms: 100 -> 0 in exactly one second.
@@ -233,13 +242,16 @@ Item {
         sendVolume(mpvVolume + (d > 0 ? 5 : -5))
     }
 
+    function connectIpc() {
+        if (mpvIpc.connected) return
+        mpvIpc.connected = true
+        if (!ipcRetry.running) ipcRetry.start()
+    }
+
     function sendVolume(v) {
         mpvVolume = Math.round(v)
-        if (!proc.running || volumeProc.running) return
-        volumeProc.command = ["sh", "-c",
-            "printf '%s' '{\"command\":[\"set_property\",\"volume\"," + mpvVolume +
-            "]}' | socat -t 1 - UNIX-CONNECT:" + mpvSocket]
-        volumeProc.running = true
+        if (!mpvIpc.connected) { connectIpc(); return }
+        mpvIpc.write(JSON.stringify({ "command": ["set_property", "volume", mpvVolume] }) + "\n")
     }
 
     // "Other audio" = any running PipeWire output stream that is not our mpv.
@@ -407,7 +419,40 @@ Item {
         }
     }
 
-    Process { id: volumeProc }
+    // mpv control socket: volume commands are written straight to it.
+    Socket {
+        id: mpvIpc
+        path: root.mpvSocket
+        onConnectedChanged: {
+            if (connected) {
+                ipcRetry.stop()
+                ipcHeal.stop()
+                sendVolume(root.fadeTarget)
+            }
+        }
+    }
+
+    Timer {
+        id: ipcRetry
+        interval: 250
+        repeat: true
+        onTriggered: {
+            if (!root.playing) { stop(); return }
+            if (mpvIpc.connected) { stop(); return }
+            mpvIpc.connected = true
+        }
+    }
+
+    // A stream started before the player gained an IPC socket can't be muted.
+    // If the socket never comes up, restart the stream so it gets one.
+    Timer {
+        id: ipcHeal
+        interval: 1800
+        repeat: false
+        onTriggered: {
+            if (root.playing && !mpvIpc.connected) root.startUrl(root.currentUrl, root.currentTitle)
+        }
+    }
 
     Process { id: stateWrite }
 

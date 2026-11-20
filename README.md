@@ -26,7 +26,6 @@ omarchy bar move pkouts.radio-garden --section centerEnd
 ## Requirements
 
 - **`mpv`** — audio playback. Install it from the Arch repositories (package `mpv`).
-- **`socat`** — used to change the player volume live for the mute feature.
 - **`curl`** — fetches the station list for a city (already present on Arch).
 - **PipeWire** (`pw-dump`) — detects when other applications are playing audio.
 - **Network access** to `radio.garden` when opening a city.

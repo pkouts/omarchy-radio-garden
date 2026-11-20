@@ -127,6 +127,7 @@ BarWidget {
                  + ",\"panelQuery\":" + JSON.stringify(loaded ? (panelLoader.item.query || "") : "")
                  + ",\"duckEnabled\":" + (s ? s.duckEnabled === true : false)
                  + ",\"otherAudio\":" + (s ? s.otherAudio === true : false)
+                 + ",\"ducked\":" + (s ? s.ducked === true : false)
                  + ",\"mpvVolume\":" + (s ? Math.round(s.mpvVolume) : -1) + "}"
         }
     }
