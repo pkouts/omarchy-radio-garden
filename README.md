@@ -3,9 +3,13 @@
 A bar widget that browses live radio stations by city — powered by
 [Radio Garden](https://radio.garden) — and plays them from the Omarchy bar.
 
-Click the radio-tower icon in the bar, search for a city, open it, and pick a
+Click the radio icon in the bar, search for a city, open it, and pick a
 station. Streams play in the background with `mpv`; the icon highlights while
 something is playing.
+
+![Radio Garden panel browsing cities](docs/panel-cities.png)
+
+![Radio Garden panel listing stations in a city](docs/panel-stations.png)
 
 ## Install
 
