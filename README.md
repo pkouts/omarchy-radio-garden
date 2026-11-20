@@ -21,7 +21,7 @@ omarchy bar move pkouts.radio-garden --section centerEnd
 
 ## Requirements
 
-- **`mpv`** — plays the audio streams (`sudo pacman -S mpv`).
+- **`mpv`** — audio playback. Install it from the Arch repositories (package `mpv`).
 - **`curl`** — fetches the station list for a city (already present on Arch).
 - **Network access** to `radio.garden` when opening a city.
 
